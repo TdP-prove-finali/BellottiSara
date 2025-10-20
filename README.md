@@ -11,4 +11,3 @@
 Video dimostrativo sull'uso dell'applicazione disponibile al link: [da aggiungere]
 
 
-https://github.com/TdP-prove-finali/BellottiSara.git
