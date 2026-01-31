@@ -2,5 +2,5 @@
 user=root
 password=rootroot1
 host=127.0.0.1
-database=
+database=ad_campaign_db.sqlite
 raise_on_warnings=True
