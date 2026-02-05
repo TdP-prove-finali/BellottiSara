@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 
 @dataclass
-class CampagnaProva():
+class Campaign():
     campaign_id: int
     name: str
     start_date: str
