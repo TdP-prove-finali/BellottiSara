@@ -40,17 +40,31 @@ class Model:
         for u in users:
             self._grafo.add_node(u, bipartite=1)
 
-        #for tupla in DAO.getAllEdgesWeight(anno, shape, self._idMapStates):
-           # stato1 = tupla[0]
-           # stato2 = tupla[1]
-           # peso = tupla[2]
-          #  if peso > 0:
-             #   self._grafo.add_edge(stato1, stato2, weight=peso)
+        #ARCHI + PESO (Campaign --> User )
+        listaIdCampaign = list(self._idMapCampaign.keys())
+        listaIdUser = list(self._idMapUser.keys())
 
-        # se dovessero servire altri parametri da salvare oltre il peso
-      #  for edge in self._grafo.edges(data=True):
-         #   self._grafo[edge[0]][edge[1]]['distanza'] = self.getDistanzaDueStati(edge[0], edge[1])
+        #Sicurezza --> se una delle due liste è vuota, niente archi
+        if not listaIdCampaign or not listaIdUser:
+            return self._grafo
 
+        edges = DAO.getAllEdgesWeight(listaIdCampaign, listaIdUser)
+        # edges: lista di dict tipo:
+        #       {"campaign_id": 12, "user_id": "687d1", "impressions": 4, "clicks": 1, "engagement": 0, "purchases": 0, "weight": 2}
+
+        for e in edges:
+            nodoCampaign = e["campaign_id"]
+            nodoUser = e["user_id"]
+
+            # Sicurezza:
+            if nodoCampaign not in self._idMapCampaign or nodoUser not in self._idMapUser:
+                continue
+
+            c = self._idMapCampaign[nodoCampaign]
+            u = self._idMapUser[nodoUser]
+            peso = e["weight"]
+
+            self._grafo.add_edge( c, u, weight=peso, impressions=e["impressions"], clicks=e["clicks"], engagement=e["engagement"], purchases=e["purchases"])
         return self._grafo
 
     def getDetailsGraph(self):
@@ -68,7 +82,9 @@ class Model:
 
 if __name__ == "__main__":
     m = Model()
-    m.buildGraph(50000, "Female" , "25-34", "France", "fashion", "lifestyle")
+    #m.buildGraph(50000, "Female" , "25-34", "France", "fashion", "lifestyle")
+    #print(m.getDetailsGraph())
+    #print(m.getId(50000, "Female" , "25-34", "France", "fashion", "lifestyle"))
+    m.buildGraph(50000, "Male" , "25-34", "United States", "fitness", "technology")
     print(m.getDetailsGraph())
-    print(m.getNodes())
-    print(m.getId(50000, "Female" , "25-34", "France", "fashion", "lifestyle"))
+    print(m.getId(50000, "Male" , "25-34", "United States", "fitness", "technology"))

@@ -11,10 +11,10 @@ class DAO:
         cursor = cnx.cursor()
         ris = []
 
-        query = """select *
-                   from campaigns
-                   where total_budget <= ?
-                   order BY campaign_id"""
+        query = """SELECT *
+                   FROM campaigns
+                   WHERE total_budget <= ?
+                   ORDER BY campaign_id"""
 
         cursor.execute(query, (budgetMax,))
         for row in cursor:
@@ -74,3 +74,116 @@ class DAO:
         cnx.close()
 
         return ris
+
+    @staticmethod
+    def _placeholders(n: int) -> str:
+        # n=3 -> "?,?,?"
+        return ",".join(["?"] * n)
+
+    @staticmethod
+    def getAllEdgesWeight(listaIdCampaign, listaIdUserSelezionati):
+        """
+        Ritorna una lista di dict, uno per ogni arco (campaign_id, user_id),
+        con KPI discreti e peso finale:
+        - impressions
+        - clicks
+        - engagement = likes + comments + shares
+        - purchases
+        - weight = 10*purchases + 2*clicks + engagement
+
+        Vengono restituiti solo archi con weight > 0 (quindi almeno un segnale utile).
+        """
+        if not listaIdCampaign or not listaIdUserSelezionati:
+            return []
+
+        cnx = DBConnect.get_connection()
+        cursor = cnx.cursor()
+
+        ph_c = DAO._placeholders(len(listaIdCampaign))
+        ph_u = DAO._placeholders(len(listaIdUserSelezionati))
+
+        query = f"""
+            WITH RawTotals AS (
+                SELECT a.campaign_id AS campaign_id, e.user_id AS user_id,
+                    SUM(CASE WHEN e.event_type = 'Impression' THEN 1 ELSE 0 END) AS impressions,
+                    SUM(CASE WHEN e.event_type = 'Click'      THEN 1 ELSE 0 END) AS clicks,
+                    SUM(CASE WHEN e.event_type = 'Like'       THEN 1 ELSE 0 END) AS likes,
+                    SUM(CASE WHEN e.event_type = 'Comment'    THEN 1 ELSE 0 END) AS comments,
+                    SUM(CASE WHEN e.event_type = 'Share'      THEN 1 ELSE 0 END) AS shares,
+                    SUM(CASE WHEN e.event_type = 'Purchase'   THEN 1 ELSE 0 END) AS purchases
+                FROM ad_events e
+                JOIN ads a ON a.ad_id = e.ad_id
+                WHERE a.campaign_id IN ({ph_c})
+                  AND e.user_id IN ({ph_u})
+                GROUP BY a.campaign_id, e.user_id )
+            SELECT campaign_id, user_id, impressions, clicks, (likes + comments + shares) AS engagement, purchases, (10 * purchases + 2 * clicks + (likes + comments + shares)) AS weight
+            FROM RawTotals
+            WHERE (10 * purchases + 2 * clicks + (likes + comments + shares)) > 0
+            """
+
+        params = tuple(listaIdCampaign) + tuple(listaIdUserSelezionati)
+        cursor.execute(query, params)
+
+        ris = [dict(row) for row in cursor.fetchall()]
+
+        cursor.close()
+        cnx.close()
+        return ris
+
+    #ris -> {"campaign_id": 12, "user_id": "687d1", "impressions": 4, "clicks": 1, "engagement": 0, "purchases": 0, "weight": 2}
+
+
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    #PROVA 1 --> ritorna tantissimi archi ma la maggior parte ha i valori fondamentali  = 0 e quindi non posso fare analisi di ottimizzazione sensate
+    @staticmethod
+    def getAllEdgesWithKPI_1(listaIdCampaign, listaIdUserSelezionati):
+        if not listaIdCampaign or not listaIdUserSelezionati:
+            return []
+
+        cnx = DBConnect.get_connection()
+        cursor = cnx.cursor()
+
+        ph_c = DAO._placeholders(len(listaIdCampaign))
+        ph_u = DAO._placeholders(len(listaIdUserSelezionati))
+
+        query = f"""
+            WITH RawTotals AS (
+                SELECT
+                    a.campaign_id AS campaign_id,
+                    e.user_id     AS user_id,
+                    SUM(CASE WHEN e.event_type = 'Impression' THEN 1 ELSE 0 END) AS impressions,
+                    SUM(CASE WHEN e.event_type = 'Click'      THEN 1 ELSE 0 END) AS clicks,
+                    SUM(CASE WHEN e.event_type = 'Purchase'   THEN 1 ELSE 0 END) AS purchases
+                FROM ad_events e
+                JOIN ads a ON a.ad_id = e.ad_id
+                WHERE a.campaign_id IN ({ph_c})
+                  AND e.user_id IN ({ph_u})
+                GROUP BY a.campaign_id, e.user_id
+            )
+            SELECT
+                campaign_id, user_id, impressions, clicks, purchases,
+                CASE WHEN impressions > 0 THEN 1.0 * clicks / impressions ELSE 0 END AS ctr,
+                CASE WHEN clicks > 0      THEN 1.0 * purchases / clicks    ELSE 0 END AS cvr
+            FROM RawTotals
+            WHERE (impressions + clicks + purchases) > 0"""
+
+        params = tuple(listaIdCampaign) + tuple(listaIdUserSelezionati)
+        cursor.execute(query, params)
+
+        # creo dizionario KPI per archi
+        ris = [dict(row) for row in cursor.fetchall()]
+
+        cursor.close()
+        cnx.close()
+        return ris
+
+
+# ris ritorna una lista di dict tipo:--> {
+                                    #     "campaign_id": 12,
+                                    #     "user_id": "687d1",
+                                    #     "impressions": 83,
+                                    #     "clicks": 4,
+                                    #     "purchases": 1,
+                                    #     "ctr": 0.04819,
+                                    #     "cvr": 0.25
+                                    # }
