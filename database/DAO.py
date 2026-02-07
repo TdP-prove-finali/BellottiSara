@@ -132,6 +132,46 @@ class DAO:
 
     #ris -> {"campaign_id": 12, "user_id": "687d1", "impressions": 4, "clicks": 1, "engagement": 0, "purchases": 0, "weight": 2}
 
+    @staticmethod
+    def getCampaignTotals(campaign_ids):
+        """
+        Totali della campagna su TUTTI gli utenti (non filtrati dal target).
+        :param idCampaign:
+        :return: ict: {campaign_id: {"impressions": int, "clicks": int, "purchases": int}}
+        """
+
+        cnx = DBConnect.get_connection()
+        cursor = cnx.cursor()
+        ph = ",".join(["?"] * len(campaign_ids))
+
+        query = f"""
+                SELECT
+                    a.campaign_id,
+                    COALESCE(SUM(CASE WHEN e.event_type = 'Impression' THEN 1 ELSE 0 END), 0) AS impressions,
+                    COALESCE(SUM(CASE WHEN e.event_type = 'Click'      THEN 1 ELSE 0 END), 0) AS clicks,
+                    COALESCE(SUM(CASE WHEN e.event_type = 'Purchase'   THEN 1 ELSE 0 END), 0) AS purchases
+                FROM ad_events e
+                JOIN ads a ON e.ad_id = a.ad_id
+                WHERE a.campaign_id IN ({ph})
+                GROUP BY a.campaign_id
+                """
+
+        #controllaaaa
+        cursor.execute(query, tuple(campaign_ids) )
+        rows = cursor.fetchall()
+
+        cursor.close()
+        cnx.close()
+
+        out = {int(cid): {"impressions": 0, "clicks": 0, "purchases": 0} for cid in campaign_ids}
+        for r in rows:
+            d = dict(r)
+            cid = int(d["campaign_id"])
+            out[cid] = {
+                "impressions": int(d.get("impressions", 0) or 0),
+                "clicks": int(d.get("clicks", 0) or 0),
+                "purchases": int(d.get("purchases", 0) or 0), }
+        return out
 
 #-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     #PROVA 1 --> ritorna tantissimi archi ma la maggior parte ha i valori fondamentali  = 0 e quindi non posso fare analisi di ottimizzazione sensate

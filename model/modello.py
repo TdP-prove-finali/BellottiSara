@@ -131,6 +131,22 @@ class Model:
             """
         return sum( item["cost"] for item in solution)
 
+    def getROI_bestSolution(self, solution, value_per_purchase):
+        """
+        :param solution: lista di dict (candidates) con chiavi "cost" e "segment"
+        :param value_per_purchase:
+        :return: ROI oppure None se non calcolabile
+        """
+        #total_cost = self.get_total_bestSolution_cost(solution)
+        total_cost_target = sum(item["cost_target"] for item in solution)
+
+        vpp = float(value_per_purchase) if value_per_purchase is not None else 0.0
+        if vpp <= 0 or total_cost_target <= 0:
+            return None
+
+        total_revenue = sum(int(item["segment"].purchases) * vpp for item in solution)
+        return (total_revenue - total_cost_target) / total_cost_target
+
     # ---------------------------------------------------------------------------------------------------------------------------------------------
     # RICORSIONE e OTTIMIZZAZIONE
     def ottimizzaBudget(self, budgetMax, goal, value_per_purchase, durationMax):
@@ -142,29 +158,47 @@ class Model:
 
         #1.a) Costruisco la lista di candidati tramite segmenti (e relative statistiche)
         campaigns = self.getCandidateCampaigns(durationMax)
+        if not campaigns:
+            print("Nessuna campagna candidata per i filtri selezionati.")
+            return {"best_score": 0, "best_campaigns": [], "best_segments": [], "roi_tot": None, "n_best_solutions": 0}
+
+        totals_map = DAO.getCampaignTotals([c.campaign_id for c in campaigns])
+
         candidates = []
         g = goal.lower().strip()
+        vpp = float(value_per_purchase) if value_per_purchase is not None else 0.0
 
         for c in campaigns:
             seg = self.getCampaignStatsOnTarget(c)
             if seg is None:
                 continue
 
-            cost = float(getattr(c, "total_budget", 0.0))
-            revenue = int(seg.purchases) * float(value_per_purchase) if value_per_purchase else 0.0
+            cost_full_campaign = float(getattr(c, "total_budget", 0.0))
+
+            #variabili per calcolare il ROI finale
+            tot = totals_map.get(c.campaign_id, {"impressions": 0, "clicks": 0, "purchases": 0})
+            impr_tot = int(tot["impressions"])
+            impr_target = int(getattr(seg, "impressions", 0))
+            share = (impr_target / impr_tot) if impr_tot > 0 else 0.0
+            cost_target = cost_full_campaign * share
+            revenue = int(seg.purchases) * vpp if vpp > 0 else 0.0
 
             if g == "click":
                 score = int(seg.clicks)
             elif g == "conversioni":
                 score = int(seg.purchases)
-            elif g == "roi":
-                score = revenue - cost  # profitto atteso
+            elif g == "engagement":
+                score = int(seg.engagement)
+            elif g == "performance index":
+                score = int(seg.weight)
             else:
-                raise ValueError("Goal non valido: usa 'click', 'conversioni' o 'roi'")
+                raise ValueError("Goal non valido: usa 'click', 'conversioni' , 'engagement' , 'performance index' ")
 
             candidates.append({ "campaign": c,
                                 "segment": seg,
-                                "cost": cost,
+                                "cost": cost_full_campaign,    #per il VINCOLO budgetMax
+                                "cost_target": cost_target,    #per il ROI sul target
+                                "share": share,   # quota target
                                 "score": score,
                                 "revenue": revenue })
 
@@ -194,26 +228,31 @@ class Model:
         best = sorted(best, key=lambda item: item["score"], reverse=True)
         alternatives = [sorted(sol, key=lambda item: item["score"], reverse=True) for sol in alternatives]
 
-        total_cost = self.get_total_bestSolution_cost(best)
+        total_cost_full = self.get_total_bestSolution_cost(best)
+        total_cost_target = sum(x["cost_target"] for x in best)
         total_revenue = sum(x["revenue"] for x in best)
-        roi_tot = (total_revenue - total_cost) / total_cost if total_cost > 0 else 0.0
 
-        #nel caso di "click" o "conversioni" il roi_tot = 0-cost/cost --> essendo cost>0 allora roi_tot = -1
+        roi_tot = self.getROI_bestSolution(best, vpp) #ROI sul target
+
+
 
         #4) Stampo ---------------------------------------------------------------------
         result = { "best_score": self._bestScore,
                    "best_campaigns": [x["campaign"] for x in best],
                    "best_segments": [x["segment"] for x in best],
-                   "total_cost": total_cost,
-                   "total_revenue": total_revenue,
-                   "roi_tot": roi_tot,
+                   "total_cost_full": total_cost_full,
+                   "total_cost_target": total_cost_target,
+                   "total_revenue_target": total_revenue,
+                   "roi_target": roi_tot,
                    "n_best_solutions": len(self._bestSolutions),
                    "n_alternatives": len(alternatives),
                    "alternatives": [
                        {"campaigns": [x["campaign"] for x in sol],
                         "segments": [x["segment"] for x in sol],
-                        "total_cost": self.get_total_bestSolution_cost(sol),
+                        "total_cost_full": self.get_total_bestSolution_cost(sol),
+                        "total_cost_target": sum(x["cost_target"] for x in sol),
                         "total_revenue": sum(x["revenue"] for x in sol),
+                        "roi_target": self.getROI_bestSolution(sol, vpp),
                         }
                        for sol in alternatives ]
                    }
@@ -222,9 +261,13 @@ class Model:
         print("\n-----RISULTATO OTTIMIZZAZIONE-----")
         print(f"Goal: {goal} | BudgetMax: {budgetMax}")
         print(f"Best score: {result['best_score']}")
-        print(f"Tot cost: {result['total_cost']:.2f}")
-        print(f"Tot revenue: {result['total_revenue']:.2f}")
-        print(f"ROI totale: {result['roi_tot']:.4f}")
+        print(f"Tot cost FULL (pagato): {result['total_cost_full']:.2f}")
+        print(f"Tot cost TARGET (allocato): {result['total_cost_target']:.2f}")
+        print(f"Tot revenue TARGET: {result['total_revenue_target']:.2f}")
+        if result["roi_target"] is None:
+            print("ROI TARGET: N/A (value_per_purchase deve essere > 0 e cost_target > 0)")
+        else:
+            print(f"ROI TARGET: {result['roi_target']:.4f}")
         print(f"Num soluzioni migliori (pari score): {result['n_best_solutions']}")
         print(f"Num alternative (pari score, costo maggiore): {result['n_alternatives']}")
 
@@ -233,7 +276,7 @@ class Model:
             c = x["campaign"]
             s = x["segment"]
             print(f"- {indice}) Campaign {c.campaign_id} | cost={x['cost']:.2f} | "
-                  f"clicks={s.clicks} | purchases={s.purchases} | weight={s.weight}")
+                  f"clicks={s.clicks} | purchases={s.purchases} | engagement={s.engagement} |  weight={s.weight}")
 
         #alternativa --> lista di liste di dict-campagna
         for sol_idx, sol in enumerate(alternatives, start=1):
@@ -245,7 +288,7 @@ class Model:
                 c = item["campaign"]
                 s = item["segment"]
                 print( f"  - {item_idx}) Campaign {c.campaign_id} | cost={item['cost']:.2f} | "
-                    f"clicks={s.clicks} | purchases={s.purchases} | weight={s.weight}" )
+                    f"clicks={s.clicks} | purchases={s.purchases} | engagement={s.engagement} |  weight={s.weight}" )
 
         return result
 
@@ -280,7 +323,10 @@ if __name__ == "__main__":
     #print(m.getDetailsGraph())
     #print(m.getId(50000, "Female" , "25-34", "France", "fashion", "lifestyle"))
     #print(m.ottimizzaBudget(50000, "ROI", 30, None))
-    m.buildGraph(50000, "Male" , "25-34", "United States", "fitness", "technology")
+    #m.buildGraph(50000, "Male" , "25-34", "United States", "fitness", "technology")
+    #print(m.getDetailsGraph())
+    #print(m.getId(50000, "Male" , "25-34", "United States", "fitness", "technology"))
+    m.buildGraph(42750, "Male", "25-34", "United States", "finance", "technology")
     print(m.getDetailsGraph())
-    print(m.getId(50000, "Male" , "25-34", "United States", "fitness", "technology"))
-    print(m.ottimizzaBudget(50000, "conversioni", 30, 50))
+    print(m.getId(42750, "Male", "25-34", "United States", "finance", "technology"))
+    print(m.ottimizzaBudget(42750, "conversioni", 100, 365))
