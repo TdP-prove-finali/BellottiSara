@@ -26,7 +26,26 @@ class Model:
             return DAO.getAllCountry()
 
     def getAllInterests(self):
-        return DAO.getAllInterests()
+        """
+            Ritorna una lista piatta di interessi senza duplicati ordinata alfabeticamente
+        """
+        raw_list = DAO.getAllInterests()
+        uniq = set()
+
+        for item in raw_list:
+            if item is None:
+                continue
+            s = str(item).strip()
+            if not s:
+                continue
+
+            parts = s.split(",")
+            for p in parts:
+                token = p.strip()
+                if token:
+                    uniq.add(token)
+
+        return sorted(uniq, key=lambda x: x.lower())
 
     #---------------------------------------------------------------------------------------------------------------------------------------------
     def buildGraph(self, budgetMax, gender, age_group, country, interest1, interest2):
@@ -79,6 +98,9 @@ class Model:
         campaign_ids = [c.campaign_id for c in DAO.getAllCampaigns(budgetMax)]
         user_ids = [u.user_id for u in DAO.getAllUsers(gender, age_group, country, interest1, interest2)]
         return campaign_ids, user_ids
+
+    def getNumNodesCampaignUsers(self):
+        return len(self._idMapCampaign), len(self._idMapUser)
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
     def getCampaignStatsOnTarget(self, campaign) -> Segment:
@@ -149,7 +171,7 @@ class Model:
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
     # RICORSIONE e OTTIMIZZAZIONE
-    def ottimizzaBudget(self, budgetMax, goal, value_per_purchase, durationMax):
+    def ottimizzaMetriche(self, budgetMax, goal, value_per_purchase, durationMax):
         """
         goal: "click" | "conversioni" | "roi"
         vincolo: somma costi (campaign.total_budget) <= budgetMax
@@ -322,11 +344,12 @@ if __name__ == "__main__":
     #m.buildGraph(50000, "Female" , "25-34", "France", "fashion", "lifestyle")
     #print(m.getDetailsGraph())
     #print(m.getId(50000, "Female" , "25-34", "France", "fashion", "lifestyle"))
-    #print(m.ottimizzaBudget(50000, "ROI", 30, None))
-    #m.buildGraph(50000, "Male" , "25-34", "United States", "fitness", "technology")
-    #print(m.getDetailsGraph())
-    #print(m.getId(50000, "Male" , "25-34", "United States", "fitness", "technology"))
-    m.buildGraph(42750, "Male", "25-34", "United States", "finance", "technology")
+    #print(m.ottimizzaMetriche(50000, "click", 30, None))
+    m.buildGraph(50000, "Male" , "25-34", "United States", "fitness", "technology")
     print(m.getDetailsGraph())
-    print(m.getId(42750, "Male", "25-34", "United States", "finance", "technology"))
-    print(m.ottimizzaBudget(42750, "conversioni", 100, 365))
+    print(m.getId(50000, "Male" , "25-34", "United States", "fitness", "technology"))
+    print(m.ottimizzaMetriche(50000, "conversioni", 30, None))
+    #m.buildGraph(42750, "", "", "United States", "finance", "technology")
+    #print(m.getDetailsGraph())
+    #print(m.getId(42750, "", "", "United States", "finance", "technology"))
+    #print(m.ottimizzaMetriche(42750, "conversioni", 100, 365))

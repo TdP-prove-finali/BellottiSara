@@ -5,6 +5,90 @@ from model.user import User
 
 class DAO:
 
+    # ---------------------------------------------------------------------------------------------------------------------------------------------
+    @staticmethod
+    def getAllUserGender():
+        cnx = DBConnect.get_connection()
+        cursor = cnx.cursor()
+        ris = []
+
+        query = """
+                SELECT DISTINCT user_gender
+                FROM users
+                WHERE user_gender IS NOT NULL
+                ORDER BY user_gender
+            """
+
+        cursor.execute(query)
+        for row in cursor:
+            ris.append(row["user_gender"])
+
+        cursor.close()
+        cnx.close()
+        return ris
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------------
+    @staticmethod
+    def getAllAgeGroup():
+        cnx = DBConnect.get_connection()
+        cursor = cnx.cursor()
+        ris = []
+
+        query = """
+                SELECT DISTINCT age_group
+                FROM users
+                ORDER BY age_group
+            """
+
+        cursor.execute(query)
+        for row in cursor:
+            ris.append(row["age_group"])
+
+        cursor.close()
+        cnx.close()
+        return ris
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------------
+    @staticmethod
+    def getAllCountry():
+        cnx = DBConnect.get_connection()
+        cursor = cnx.cursor()
+        ris = []
+
+        query = """
+                SELECT DISTINCT country
+                FROM users
+                ORDER BY country
+            """
+
+        cursor.execute(query)
+        for row in cursor:
+            ris.append(row["country"])
+
+        cursor.close()
+        cnx.close()
+        return ris
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------------
+    @staticmethod
+    def getAllInterests():
+        cnx = DBConnect.get_connection()
+        cursor = cnx.cursor()
+        ris = []
+
+        query = """
+                SELECT DISTINCT interests
+                FROM users
+               """
+        cursor.execute(query)
+        for row in cursor:
+            ris.append(row["interests"])  # es: "fashion, lifestyle"
+
+        cursor.close()
+        cnx.close()
+        return ris
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------------
     @staticmethod
     def getAllCampaigns(budgetMax):
         cnx = DBConnect.get_connection()
@@ -25,6 +109,7 @@ class DAO:
 
         return ris
 
+    # ---------------------------------------------------------------------------------------------------------------------------------------------
     @staticmethod
     def _parse_interests_csv(interests_str):
         """
@@ -36,6 +121,7 @@ class DAO:
         parts = [p.strip() for p in str(interests_str).split(",")]
         parts = [p for p in parts if p]  # rimuove vuoti
         return tuple(parts)
+
 
     @staticmethod
     def getAllUsers( gender, age_group , country, interest1, interest2):
@@ -75,10 +161,12 @@ class DAO:
 
         return ris
 
+    # ---------------------------------------------------------------------------------------------------------------------------------------------
     @staticmethod
     def _placeholders(n: int) -> str:
         # n=3 -> "?,?,?"
         return ",".join(["?"] * n)
+
 
     @staticmethod
     def getAllEdgesWeight(listaIdCampaign, listaIdUserSelezionati):
@@ -132,6 +220,7 @@ class DAO:
 
     #ris -> {"campaign_id": 12, "user_id": "687d1", "impressions": 4, "clicks": 1, "engagement": 0, "purchases": 0, "weight": 2}
 
+    # ---------------------------------------------------------------------------------------------------------------------------------------------
     @staticmethod
     def getCampaignTotals(campaign_ids):
         """
@@ -172,58 +261,3 @@ class DAO:
                 "clicks": int(d.get("clicks", 0) or 0),
                 "purchases": int(d.get("purchases", 0) or 0), }
         return out
-
-#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-    #PROVA 1 --> ritorna tantissimi archi ma la maggior parte ha i valori fondamentali  = 0 e quindi non posso fare analisi di ottimizzazione sensate
-    @staticmethod
-    def getAllEdgesWithKPI_1(listaIdCampaign, listaIdUserSelezionati):
-        if not listaIdCampaign or not listaIdUserSelezionati:
-            return []
-
-        cnx = DBConnect.get_connection()
-        cursor = cnx.cursor()
-
-        ph_c = DAO._placeholders(len(listaIdCampaign))
-        ph_u = DAO._placeholders(len(listaIdUserSelezionati))
-
-        query = f"""
-            WITH RawTotals AS (
-                SELECT
-                    a.campaign_id AS campaign_id,
-                    e.user_id     AS user_id,
-                    SUM(CASE WHEN e.event_type = 'Impression' THEN 1 ELSE 0 END) AS impressions,
-                    SUM(CASE WHEN e.event_type = 'Click'      THEN 1 ELSE 0 END) AS clicks,
-                    SUM(CASE WHEN e.event_type = 'Purchase'   THEN 1 ELSE 0 END) AS purchases
-                FROM ad_events e
-                JOIN ads a ON a.ad_id = e.ad_id
-                WHERE a.campaign_id IN ({ph_c})
-                  AND e.user_id IN ({ph_u})
-                GROUP BY a.campaign_id, e.user_id
-            )
-            SELECT
-                campaign_id, user_id, impressions, clicks, purchases,
-                CASE WHEN impressions > 0 THEN 1.0 * clicks / impressions ELSE 0 END AS ctr,
-                CASE WHEN clicks > 0      THEN 1.0 * purchases / clicks    ELSE 0 END AS cvr
-            FROM RawTotals
-            WHERE (impressions + clicks + purchases) > 0"""
-
-        params = tuple(listaIdCampaign) + tuple(listaIdUserSelezionati)
-        cursor.execute(query, params)
-
-        # creo dizionario KPI per archi
-        ris = [dict(row) for row in cursor.fetchall()]
-
-        cursor.close()
-        cnx.close()
-        return ris
-
-
-# ris ritorna una lista di dict tipo:--> {
-                                    #     "campaign_id": 12,
-                                    #     "user_id": "687d1",
-                                    #     "impressions": 83,
-                                    #     "clicks": 4,
-                                    #     "purchases": 1,
-                                    #     "ctr": 0.04819,
-                                    #     "cvr": 0.25
-                                    # }
