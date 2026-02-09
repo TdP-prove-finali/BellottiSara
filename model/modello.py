@@ -360,9 +360,9 @@ class Model:
             cost_alloc = float(getattr(c, "total_budget", 0.0)) * share
             cost_alloc_tot += cost_alloc
 
-            purchases_tot += int(getattr(segment, "purchases", 0) or 0)
-            clicks_tot += int(getattr(segment, "clicks", 0) or 0)
-            engagement_tot += int(getattr(segment, "engagement", 0) or 0)
+            purchases_tot += int(getattr(segment, "purchases", 0))
+            clicks_tot += int(getattr(segment, "clicks", 0))
+            engagement_tot += int(getattr(segment, "engagement", 0))
 
 
         revenue = (purchases_tot * self.vpp)
