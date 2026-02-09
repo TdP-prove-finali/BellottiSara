@@ -1,3 +1,5 @@
+from typing import List, Dict
+
 from database.DB_connect import DBConnect
 from model.campaign import Campaign
 from model.user import User
@@ -15,7 +17,6 @@ class DAO:
         query = """
                 SELECT DISTINCT user_gender
                 FROM users
-                WHERE user_gender IS NOT NULL
                 ORDER BY user_gender
             """
 
@@ -82,7 +83,7 @@ class DAO:
                """
         cursor.execute(query)
         for row in cursor:
-            ris.append(row["interests"])  # es: "fashion, lifestyle"
+            ris.append(row["interests"])  # es: "lifestyle, technology, fitness"
 
         cursor.close()
         cnx.close()
@@ -111,20 +112,30 @@ class DAO:
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
     @staticmethod
-    def _parse_interests_csv(interests_str):
+    def parseInterestsStringaInTupla(interests_str):
         """
-        interests_str nel DB: stringa tipo 'fashion, lifestyle'
-        ritorna: tuple normalizzata ('fashion','lifestyle')
+        Convert the `users.interests` field from the database 'fashion, lifestyle'
+        into a Python tuple ('fashion','lifestyle')
+        :param interests_str
+        :return tuple or () if is None
         """
         if interests_str is None:
             return tuple()
+
         parts = [p.strip() for p in str(interests_str).split(",")]
-        parts = [p for p in parts if p]  # rimuove vuoti
+        parts = [p for p in parts if p]                                    #rimuove vuoti
         return tuple(parts)
 
 
     @staticmethod
     def getAllUsers( gender, age_group , country, interest1, interest2):
+        """
+        Demographic filters use COALESCE(?, column) so that passing None disables the filter.
+        - Interests are optional:
+            - if both interest1 and interest2 are empty/None -> no interest filter is applied
+            - otherwise, a user is selected if their `interests` field contains at least one of the provided tokens.
+        :return list[User]
+        """
         cnx = DBConnect.get_connection()
         cursor = cnx.cursor()
         ris = []
@@ -153,7 +164,7 @@ class DAO:
 
         for row in cursor:
             d = dict(row)
-            d["interests"] = DAO._parse_interests_csv(d["interests"])
+            d["interests"] = DAO.parseInterestsStringaInTupla(d["interests"])
             ris.append(User(**d))
 
         cursor.close()
@@ -164,22 +175,28 @@ class DAO:
     # ---------------------------------------------------------------------------------------------------------------------------------------------
     @staticmethod
     def _placeholders(n: int) -> str:
-        # n=3 -> "?,?,?"
+        """
+        Generate a comma-separated list of SQL placeholders ('?')
+        :return str
+        """
         return ",".join(["?"] * n)
 
 
     @staticmethod
     def getAllEdgesWeight(listaIdCampaign, listaIdUserSelezionati):
         """
-        Ritorna una lista di dict, uno per ogni arco (campaign_id, user_id),
-        con KPI discreti e peso finale:
-        - impressions
-        - clicks
-        - engagement = likes + comments + shares
-        - purchases
-        - weight = 10*purchases + 2*clicks + engagement
+        Compute weighted edges between campaigns and users based on interaction events.
+        Returns a list of dictionaries, one for each edge (campaign_id, user_id), containing discrete KPIs and a final weight:
+            - impressions
+            - clicks
+            - engagement = likes + comments + shares
+            - purchases
+            - weight = 10 * purchases + 2 * clicks + engagement
 
-        Vengono restituiti solo archi con weight > 0 (quindi almeno un segnale utile).
+        Only edges with weight > 0 are returned, meaning that at least one meaningful interaction signal is present.
+        :param listaIdCampaign : list[int]
+        :param listaIdUserSelezionati : list[str]
+        :return list[dict]
         """
         if not listaIdCampaign or not listaIdUserSelezionati:
             return []
@@ -213,20 +230,20 @@ class DAO:
         cursor.execute(query, params)
 
         ris = [dict(row) for row in cursor.fetchall()]
+        # ris -> {"campaign_id": 12, "user_id": "687d1", "impressions": 1, "clicks": 1, "engagement": 0, "purchases": 0, "weight": 2}
 
         cursor.close()
         cnx.close()
         return ris
 
-    #ris -> {"campaign_id": 12, "user_id": "687d1", "impressions": 4, "clicks": 1, "engagement": 0, "purchases": 0, "weight": 2}
-
     # ---------------------------------------------------------------------------------------------------------------------------------------------
     @staticmethod
     def getCampaignTotals(campaign_ids):
         """
-        Totali della campagna su TUTTI gli utenti (non filtrati dal target).
-        :param idCampaign:
-        :return: ict: {campaign_id: {"impressions": int, "clicks": int, "purchases": int}}
+        Compute global event totals for each campaign across ALL users
+
+        :param campaign_ids: list[int]
+        :return: {campaign_id: {"impressions": int, "clicks": int, "purchases": int}}
         """
 
         cnx = DBConnect.get_connection()
@@ -245,19 +262,69 @@ class DAO:
                 GROUP BY a.campaign_id
                 """
 
-        #controllaaaa
+        #converto in tupla ((id1, id2, id3))
         cursor.execute(query, tuple(campaign_ids) )
         rows = cursor.fetchall()
 
         cursor.close()
         cnx.close()
 
-        out = {int(cid): {"impressions": 0, "clicks": 0, "purchases": 0} for cid in campaign_ids}
+        # inizializzo a 0 cosicchè anche se una campagna non ha righe nella query, la ritrovo comunque nel risultato con valori 0
+        ris = {int(cid): {"impressions": 0, "clicks": 0, "purchases": 0} for cid in campaign_ids}
+
         for r in rows:
             d = dict(r)
             cid = int(d["campaign_id"])
-            out[cid] = {
-                "impressions": int(d.get("impressions", 0) or 0),
-                "clicks": int(d.get("clicks", 0) or 0),
-                "purchases": int(d.get("purchases", 0) or 0), }
-        return out
+            ris[cid] = { "impressions": int(d.get("impressions", 0)),
+                         "clicks": int(d.get("clicks", 0)),
+                         "purchases": int(d.get("purchases", 0))
+                         }
+        return ris
+
+
+    @staticmethod
+    def getCampaignImpressionsOnTarget(campaign_ids, user_ids):
+        """
+        Campaign impressions filtered ONLY on target users.
+        This is necessary because impressions are not fully observable on graph edges.
+        The result is used for cost allocation -> share = impressions_target / impressions_total
+        :param campaign_ids: List[int]
+        :param user_ids: List[str]
+        :return Dict[int, int]  -> { campaign_id (int): impressions_target (int) }
+        """
+        if not campaign_ids or not user_ids:
+            #mappa con 0 se non ci sono campagne o user
+            return {int(cid): 0 for cid in (campaign_ids or [])}
+
+        cnx = DBConnect.get_connection()
+        cursor = cnx.cursor()
+
+        ph_c = ",".join(["?"] * len(campaign_ids))
+        ph_u = ",".join(["?"] * len(user_ids))
+
+        query = f"""
+                SELECT a.campaign_id AS campaign_id,
+                       COALESCE(SUM(CASE WHEN e.event_type = 'Impression' THEN 1 ELSE 0 END), 0) AS impressions
+                FROM ad_events e
+                JOIN ads a ON e.ad_id = a.ad_id
+                WHERE a.campaign_id IN ({ph_c})
+                  AND e.user_id IN ({ph_u})
+                GROUP BY a.campaign_id
+            """
+
+        params = tuple(campaign_ids) + tuple(user_ids)
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        cursor.close()
+        cnx.close()
+
+        # inizializzo a 0
+        ris = {int(cid): 0 for cid in campaign_ids}
+
+        for r in rows:
+            d = dict(r)
+            cid = int(d["campaign_id"])
+            ris[cid] = int(d.get("impressions", 0))
+
+        return ris
