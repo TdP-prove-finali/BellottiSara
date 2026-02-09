@@ -24,7 +24,7 @@ class Controller:
         self._last_result: Optional[dict] = None
 
     #-----------------------------------------------------------------------------------------------------------------------------------------------------------------
-    #HELPER UI (spiegami meglio che non sto capendo nulls)
+    #HELPER UI
     def _set_summary(self, text: str, color: Optional[str] = None):
 
         if self._view.txt_selected_summary is None:
@@ -185,7 +185,6 @@ class Controller:
         budgetMax = self._view.tf_budget.value
 
         if budgetMax == "":
-            #come si chiama in view la variabile dove stampo il risultato cosi attacco questa??
             self._show_progress(False)
             self._set_summary("Attenzione: inserisci un budget massimo per continuare.", color="red")
             self._view.update_page()
@@ -235,7 +234,6 @@ class Controller:
         """
         self._scoreSelected = self._view.dd_goal.value  # es. "Click", "Conversioni", ...
         if self._scoreSelected == "":
-            #capire in quale blocco testo scrivere
             self._set_summary("Attenzione: inserisci un goal da raggiungere per continuare.", color="red")
             self._view.update_page()
         self._view.update_page()
@@ -446,6 +444,7 @@ class Controller:
                                                 controls=[title, meta, *rows]),
                               )
             )
+
         self._view.update_page()
 
 
