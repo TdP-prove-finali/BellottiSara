@@ -333,7 +333,7 @@ class Controller:
 
         # si solution
         self._has_best_solution = True
-        self._goal_selected = score
+        self._score_selected = score
         total_cost = float(result.get("total_cost_full", 0.0))
         best_score = result.get("best_score", 0.0)
 
