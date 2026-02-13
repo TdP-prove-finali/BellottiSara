@@ -1,4 +1,4 @@
-# Sara Bellotti - Sviluppo di un sistema decisionale basato su dati per l’ottimizzazione del budget pubblicitario nei social media
+# Sara Bellotti - Applicazione algoritmica per l’ottimizzazione delle campagne pubblicitarie sui social media
 
 ## Istruzioni per l'installazione e l’utilizzo dell’applicazione:
 1. Effettuare il fork del progetto al seguente link: https://github.com/TdP-prove-finali/BellottiSara.git
