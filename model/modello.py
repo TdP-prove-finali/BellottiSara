@@ -1,4 +1,6 @@
 import copy
+import time
+
 import networkx as nx
 from database.DAO import DAO
 from model.segment import Segment
@@ -59,7 +61,7 @@ class Model:
         self._grafo.clear()
         self.best = None
 
-        # NODED CAMPAIGNS (bipartite=0) ---------------------------------------------
+        # NODES CAMPAIGNS (bipartite=0) ---------------------------------------------
         campaigns = DAO.getAllCampaigns(budgetMax)
         self._idMapCampaign = { c.campaign_id: c for c in campaigns }
         for c in campaigns:
@@ -276,33 +278,6 @@ class Model:
                        for sol in alternatives ]
                    }
 
-        #5) Debug console ----------------------------------------------------------------
-        print("\n-----RISULTATO OTTIMIZZAZIONE-----")
-        print(f"Goal: {goal} | BudgetMax: {budgetMax}")
-        print(f"Best score: {result['best_score']}")
-        print(f"Tot cost FULL (pagato): {result['total_cost_full']:.2f}")
-        print(f"Num soluzioni migliori (pari score): {result['n_best_solutions']}")
-        print(f"Num alternative (pari score, costo maggiore): {result['n_alternatives']}")
-
-        #soluzione migliore --> lista di dict-campagna
-        for indice, x in enumerate(self.best, start=1):
-            c = x["campaign"]
-            s = x["segment"]
-            print(f"- {indice}) Campaign {c.campaign_id} | cost={x['cost']:.2f} | "
-                  f"clicks={s.clicks} | purchases={s.purchases} | engagement={s.engagement} |  weight={s.weight}")
-
-        #alternativa --> lista di liste di dict-campagna
-        for sol_idx, sol in enumerate(alternatives, start=1):
-            sol_cost = self.getCostTotal_bestSolution(sol)
-            #sol_revenue = sum(item["revenue"] for item in sol)
-            print(f"\n--- Alternativa {sol_idx} | cost={sol_cost:.2f} ---")
-
-            for item_idx, item in enumerate(sol, start=1):
-                c = item["campaign"]
-                s = item["segment"]
-                print( f"  - {item_idx}) Campaign {c.campaign_id} | cost={item['cost']:.2f} | "
-                    f"clicks={s.clicks} | purchases={s.purchases} | engagement={s.engagement} |  weight={s.weight}" )
-
         return result
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
@@ -386,21 +361,3 @@ class Model:
                                 "engagement": engagement_tot}
 
         return mapEconomicEvaluation
-
-
-if __name__ == "__main__":
-    m = Model()
-    m.buildGraph(50000, "Female" , "25-34", "France", "fashion", "lifestyle")
-    print(m.getDetailsGraph())
-    print(m.getId(50000, "Female" , "25-34", "France", "fashion", "lifestyle"))
-    print(m.ottimizzaMetriche(50000, "click", 30, None))
-    print(m.getEconomicEvaluationForBestSolution())
-    #m.buildGraph(50000, "Male" , "25-34", "United States", "fitness", "technology")
-    #print(m.getDetailsGraph())
-    #print(m.getId(50000, "Male" , "25-34", "United States", "fitness", "technology"))
-    #print(m.ottimizzaMetriche(50000, "conversioni", 30, None))
-    #print(m.getEconomicEvaluationForBestSolution())
-    #m.buildGraph(42750, "", "", "United States", "finance", "technology")
-    #print(m.getDetailsGraph())
-    #print(m.getId(42750, "", "", "United States", "finance", "technology"))
-    #print(m.ottimizzaMetriche(42750, "conversioni", 100, 365))

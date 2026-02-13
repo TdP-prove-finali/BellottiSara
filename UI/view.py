@@ -277,7 +277,7 @@ class View(ft.UserControl):
                                       content=ft.Column( spacing=12,
                                                          controls=[ ft.Row( controls=[ ft.Icon(ft.icons.AUTO_AWESOME,
                                                                                                color=ft.colors.BLUE_700),
-                                                                                       ft.Text(value="3) Ottimizzazione", size=16, weight=ft.FontWeight.W_700),
+                                                                                       ft.Text(value="Ottimizzazione", size=16, weight=ft.FontWeight.W_700),
                                                                                        ]
                                                                             ),
                                                                     ft.Text(value= "Scegli l’obiettivo (score). Facoltativamente imposta la durata massima. Poi avvia l’ottimizzazione",
